@@ -1,0 +1,23 @@
+{
+  "name": "nightmare-zone",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others -n api,web \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:backend": "npm run start:dev --workspace backend",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run build --workspace backend && node --experimental-strip-types --test tests/*.test.mjs",
+    "check:connection": "node --experimental-strip-types scripts/check-game-connection.mjs"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}

@@ -1,0 +1,108 @@
+import { expect, test } from '@playwright/test';
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('nightmare-admin-preferences', JSON.stringify({ dataMode: 'sample', autoRefresh: false })));
+});
+
+test('filters, derived metrics, detail view and chart selection', async ({ page }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'PLAYER STATUS', exact: true })).toBeVisible();
+  await expect(page.locator('.player-card')).toHaveCount(5);
+  await expect(page.locator('.overview-metrics')).toContainText('58%');
+  await page.getByRole('combobox', { name: 'Filter by health status' }).selectOption('Injured');
+  await expect(page.locator('.player-card')).toHaveCount(2);
+  await expect(page.locator('.overview-metrics')).toContainText('49%');
+  await page.getByRole('combobox', { name: 'Filter by health status' }).selectOption('All statuses');
+  await page.getByRole('textbox', { name: 'Search players or Pokémon' }).fill('Vean');
+  await expect(page.locator('.player-card')).toHaveCount(1);
+  await page.getByRole('combobox', { name: 'Filter by night' }).selectOption('3');
+  await expect(page.locator('.overview-metrics')).toContainText('75%');
+  await page.getByRole('button', { name: 'View details' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('.detail-kpis')).toContainText('3 / 1');
+  await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).not.toBeVisible();
+  await page.getByRole('textbox', { name: 'Search players or Pokémon' }).fill('');
+  await page.getByRole('combobox', { name: 'Filter by night' }).selectOption('all');
+  await page.getByRole('combobox', { name: 'Performance metric' }).selectOption('Damage received');
+  await expect(page.getByRole('img', { name: 'Damage received over 5 sessions' })).toBeVisible();
+  await page.getByRole('columnheader').filter({ hasText: 'Win rate' }).getByRole('button').click();
+  await expect(page.locator('tbody tr').first()).toContainText('Aira');
+  expect(errors).toEqual([]);
+});
+test('evidence, planning, navigation and empty states', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'View evidence', exact: true }).first().click();
+  await expect(page.getByRole('dialog')).toContainText('current HP ≤ 40%');
+  await page.getByRole('button', { name: 'Close details' }).click();
+  await page.getByRole('button', { name: 'Apply strategy', exact: true }).first().click();
+  await expect(page.getByRole('button', { name: '✓ Added to plan' })).toBeDisabled();
+  await page.getByRole('navigation').getByRole('button', { name: 'Strategy Center' }).click();
+  await expect(page.locator('.strategy-workspace')).toContainText('Prioritize Aira’s recovery');
+  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(page.locator('.strategy-workspace')).toContainText('Add a recommendation');
+  await page.getByRole('navigation').getByRole('button', { name: 'Analytics Dashboard' }).click();
+  await expect(page.locator('.analytics-card')).toHaveCount(4);
+  await page.getByRole('textbox', { name: 'Search players or Pokémon' }).fill('No such player');
+  await expect(page.locator('.detailed-panel')).toContainText('No player records');
+});
+test('team overview presents team comparisons and recovery instead of player cards', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('navigation').getByRole('button', { name: 'Team Overview' }).click();
+  await expect(page.getByRole('heading', { name: 'TEAM OVERVIEW', exact: true })).toBeVisible();
+  await expect(page.locator('.player-card')).toHaveCount(0);
+  await expect(page.locator('.detailed-panel')).toHaveCount(0);
+  await expect(page.locator('.readiness-score')).toContainText('2 / 5');
+  await expect(page.locator('.composition-row')).toHaveCount(5);
+  await expect(page.locator('.recovery-row')).toHaveCount(3);
+  await page.getByRole('combobox', { name: 'Team comparison metric' }).selectOption('Current HP');
+  await expect(page.locator('.contribution-row').first()).toContainText('Vean');
+  await expect(page.locator('.contribution-row').first()).toContainText('72%');
+  await page.locator('.recovery-row').first().click();
+  await expect(page.getByRole('dialog')).toContainText('Aira');
+  await page.keyboard.press('Escape');
+  await page.locator('.matchup-row').first().click();
+  await expect(page.getByRole('dialog')).toContainText('observed outcomes');
+  await page.keyboard.press('Escape');
+  await page.getByRole('combobox', { name: 'Filter by night' }).selectOption('3');
+  await expect(page.locator('.team-night-history tbody tr')).toHaveCount(1);
+  await expect(page.locator('.team-night-history tbody')).toContainText('65%');
+  await page.screenshot({ path: 'test-results/team-overview-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('textbox', { name: 'Search players or Pokémon' }).fill('no matching player');
+  await expect(page.locator('.readiness-copy')).toContainText('No players');
+  await expect(page.locator('.recovery-row')).toHaveCount(0);
+  await page.getByRole('navigation').getByRole('button', { name: 'Player Status' }).click();
+  await page.getByRole('textbox', { name: 'Search players or Pokémon' }).fill('');
+  await expect(page.locator('.player-card')).toHaveCount(5);
+  await expect(page.locator('.team-overview')).toHaveCount(0);
+});
+test('live mode handles failure without substituting demo records', async ({ page }) => {
+  await page.route('**/api/dashboard', route => route.fulfill({ status: 401, contentType: 'application/json', body: '{}' }));
+  await page.goto('/'); await page.getByRole('button', { name: 'Connect game data' }).click();
+  await page.getByRole('radio', { name: 'Connected game' }).check();
+  await expect(page.locator('.state-message.error')).toContainText('Admin access denied');
+  await page.getByRole('navigation').getByRole('button', { name: 'Player Status' }).click();
+  await expect(page.locator('.player-card')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.locator('.state-message.error')).toBeVisible();
+});
+test('live mode handles empty and malformed records', async ({ page }) => {
+  await page.route('**/api/dashboard', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ players: [], sessions: [], battles: [] }) }));
+  await page.goto('/'); await page.getByRole('button', { name: 'Connect game data' }).click();
+  await page.getByRole('radio', { name: 'Connected game' }).check();
+  await page.getByRole('navigation').getByRole('button', { name: 'Player Status' }).click();
+  await expect(page.locator('.player-card')).toHaveCount(0); await expect(page.locator('.state-message.error')).toHaveCount(0);
+  await page.route('**/api/dashboard', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(page.locator('.state-message.error')).toContainText('invalid dashboard record');
+});
+test('desktop and mobile layouts fit their viewports', async ({ page }) => {
+  await page.goto('/'); await page.screenshot({ path: 'test-results/dashboard-desktop.png', fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: 'test-results/dashboard-mobile.png', fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'View details' }).first().click(); await expect(page.getByRole('dialog')).toBeVisible();
+});
