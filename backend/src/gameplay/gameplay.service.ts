@@ -1,6 +1,7 @@
-import { ForbiddenException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
@@ -9,6 +10,11 @@ import { mapGameplayRecords, EncounterRecord, GamePlayer, PokemonRecord } from '
 @Injectable()
 export class GameplayService {
   private readonly client: SupabaseClient | null;
+  private readonly supabaseUrl: string | undefined;
+  private readonly serviceKey: string | undefined;
+  private readonly adminAccessCode: string | undefined;
+  private readonly accessSessions = new Map<string, number>();
+  private readonly failedCodeAttempts = new Map<string, { count: number; windowStarted: number; lockedUntil: number }>();
   constructor(private readonly config: ConfigService) {
     let external: Record<string, string | undefined> = {};
     const file = config.get<string>('GAME_ENV_FILE');
@@ -16,14 +22,55 @@ export class GameplayService {
       try { external = parseEnv(readFileSync(resolve(process.cwd(), file), 'utf8')); }
       catch { throw new Error('Unable to read GAME_ENV_FILE. Check the server-side configuration path.'); }
     }
-    const url = config.get<string>('SUPABASE_URL') || external.SUPABASE_URL;
-    const key = config.get<string>('SUPABASE_SERVICE_ROLE_KEY') || external.SUPABASE_SERVICE_ROLE_KEY;
-    this.client = url && key ? createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
+    this.supabaseUrl = config.get<string>('SUPABASE_URL') || external.SUPABASE_URL;
+    this.serviceKey = config.get<string>('SUPABASE_SERVICE_ROLE_KEY') || external.SUPABASE_SERVICE_ROLE_KEY;
+    this.adminAccessCode = config.get<string>('DASHBOARD_ACCESS_CODE');
+    this.client = this.supabaseUrl && this.serviceKey ? createClient(this.supabaseUrl, this.serviceKey, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
   }
   get isConfigured() { return this.client !== null; }
   private getClient() {
     if (!this.client) throw new ServiceUnavailableException('Configure the shared game database on the dashboard backend.');
     return this.client;
+  }
+  async signInWithAccessCode(code: string, remoteAddress?: string) {
+    if (!this.adminAccessCode) throw new ServiceUnavailableException('Set DASHBOARD_ACCESS_CODE in backend/.env to enable sign-in.');
+    const now = Date.now();
+    const address = remoteAddress || 'unknown';
+    const attempt = this.failedCodeAttempts.get(address);
+    if (attempt?.lockedUntil && attempt.lockedUntil > now) throw new HttpException('Too many incorrect codes. Try again in 10 minutes.', HttpStatus.TOO_MANY_REQUESTS);
+    const expected = Buffer.from(this.adminAccessCode, 'utf8');
+    const provided = Buffer.from(code, 'utf8');
+    const matches = provided.length === expected.length && timingSafeEqual(provided, expected);
+    if (!matches) {
+      const withinWindow = attempt && now - attempt.windowStarted < 10 * 60 * 1000;
+      const count = withinWindow ? attempt.count + 1 : 1;
+      const windowStarted = withinWindow ? attempt.windowStarted : now;
+      this.failedCodeAttempts.set(address, { count, windowStarted, lockedUntil: count >= 5 ? now + 10 * 60 * 1000 : 0 });
+      throw new UnauthorizedException('The access code is incorrect.');
+    }
+    this.failedCodeAttempts.delete(address);
+    for (const [session, expiry] of this.accessSessions) if (expiry <= now) this.accessSessions.delete(session);
+    const accessToken = randomBytes(32).toString('base64url');
+    this.accessSessions.set(accessToken, now + 8 * 60 * 60 * 1000);
+    return { accessToken };
+  }
+  signOut(authorization?: string) {
+    const token = authorization?.match(/^Bearer (\S+)$/i)?.[1];
+    if (token) this.accessSessions.delete(token);
+    return { ok: true };
+  }
+  private async readActiveRunCount(): Promise<number | null> {
+    const baseUrl = (this.config.get<string>('GAME_API_URL') || 'http://127.0.0.1:3001/api').replace(/\/+$/, '');
+    try {
+      const response = await fetch(`${baseUrl}/analytics`, { signal: AbortSignal.timeout(3000), cache: 'no-store' });
+      if (!response.ok) return null;
+      const payload: unknown = await response.json();
+      if (!payload || typeof payload !== 'object' || !('active' in payload) || typeof payload.active !== 'number' || !Number.isInteger(payload.active) || payload.active < 0) return null;
+      return payload.active;
+    } catch { return null; }
+  }
+  async liveStatus() {
+    return { activeRuns: await this.readActiveRunCount(), checkedAt: new Date().toISOString() };
   }
   async authorize(authorization: string | undefined, remoteAddress: string | undefined, origin?: string) {
     const loopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remoteAddress || '');
@@ -32,9 +79,12 @@ export class GameplayService {
     if (localMode && loopback && trustedOrigin) return;
     const token = authorization?.match(/^Bearer (\S+)$/i)?.[1];
     if (!token) throw new UnauthorizedException('An administrator access token is required.');
-    const { data, error } = await this.getClient().auth.getUser(token);
-    if (error || !data.user) throw new UnauthorizedException('Invalid or expired access token.');
-    if (data.user.app_metadata?.role !== 'admin') throw new ForbiddenException('Administrator access required.');
+    const sessionExpiry = this.accessSessions.get(token);
+    if (sessionExpiry !== undefined) {
+      if (sessionExpiry > Date.now()) return;
+      this.accessSessions.delete(token);
+    }
+    throw new UnauthorizedException('Invalid or expired administrator session.');
   }
   private async readRows<T>(table: string, columns: string, key: string, realOnly = false): Promise<T[]> {
     const rows: T[] = [];
@@ -54,11 +104,13 @@ export class GameplayService {
     }
   }
   async dashboard() {
-    // Encounters include their logged turns. Ongoing runs are intentionally not
-    // reconstructed from completed encounters or the aggregate active-run count.
-    const encounters = await this.readRows<EncounterRecord>('encounters', 'id,run_id,session_id,player_id,player_name,night,team,team_state,opponent,hp_start,hp_end,damage_dealt,item_used,outcome,data_source,created_at,turn_count,turns(turn_number,active_pokemon,damage_taken)', 'id', true);
-    const players = await this.readRows<GamePlayer>('players', 'id,display_name', 'id');
-    const pokemon = await this.readRows<PokemonRecord>('pokemon', 'id,name,types', 'id');
-    return mapGameplayRecords(players, encounters, pokemon);
+    // Ongoing player state is never reconstructed from completed encounters.
+    const [encounters, players, pokemon, activeRuns] = await Promise.all([
+      this.readRows<EncounterRecord>('encounters', 'id,run_id,session_id,player_id,player_name,night,team,team_state,opponent,hp_start,hp_end,damage_dealt,item_used,outcome,data_source,created_at,turn_count,turns(turn_number,active_pokemon,damage_taken)', 'id', true),
+      this.readRows<GamePlayer>('players', 'id,display_name', 'id'),
+      this.readRows<PokemonRecord>('pokemon', 'id,name,types', 'id'),
+      this.readActiveRunCount(),
+    ]);
+    return { ...mapGameplayRecords(players, encounters, pokemon), activeRuns };
   }
 }

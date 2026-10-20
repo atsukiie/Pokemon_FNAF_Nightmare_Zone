@@ -6,7 +6,7 @@ Pokémon × FNAF: Nightmare Zone is a browser-based horror mini-game inspired by
 | Part | Framework / Technology |
 | --- | --- |
 | Frontend | Next.js + React |
-| Backend | NestJS |
+| Backend | NestJS for local development; Next.js Route Handlers for Vercel |
 | Database | Supabase (PostgreSQL) |
 | 3D graphics | Three.js |
 | Styling | CSS |
@@ -43,7 +43,7 @@ Start the dashboard from the repository root:
 npm.cmd run dev
 ```
 
-This starts the dashboard frontend at http://localhost:3000 and its NestJS backend at http://127.0.0.1:3002. The separate game API remains on port 3001. In PowerShell, `npm.cmd` avoids the script execution policy that can block `npm.ps1`. Stop already running dashboard development servers before starting both together.
+This starts the dashboard frontend at http://localhost:3003 and its NestJS backend at http://127.0.0.1:3002. The separate game API remains on port 3001; the dashboard uses port 3003 so it does not replace the game on port 3000. In PowerShell, `npm.cmd` avoids the script execution policy that can block `npm.ps1`.
 
 To run the frontend and backend separately, use two terminals:
 
@@ -55,11 +55,39 @@ npm.cmd run dev:frontend
 npm.cmd run dev:backend
 ```
 
-Frontend: http://localhost:3000
+Frontend: http://localhost:3003
 
 Dashboard backend health: http://127.0.0.1:3002/api/health
 
-Open **http://localhost:3000** for the dashboard UI. Port 3002 serves its backend API; its root URL redirects to the frontend configured by `FRONTEND_URL`.
+Open **http://localhost:3003** for the dashboard UI. Port 3002 serves its backend API; its root URL redirects to the frontend configured by `FRONTEND_URL`.
+
+## Deploy the dashboard to Vercel
+
+The Next.js dashboard includes Vercel compatible API routes for login and reading the shared game database. Import the GitHub repository as a Vercel project and set **Root Directory** to `frontend`; use the detected Next.js framework and defaults for build and output settings. Vercel supports each monorepo app as a separate project, selected by its root directory.
+
+Add these server-only variables in the Vercel project settings for Production (and Preview if needed):
+
+| Variable | Value |
+| --- | --- |
+| `SUPABASE_URL` | The game project's Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | The existing server-side service role key; never use a `NEXT_PUBLIC_` prefix |
+| `DASHBOARD_ACCESS_CODE` | The shared admin login code |
+| `DASHBOARD_SESSION_SECRET` | A random secret at least 32 characters long |
+| `GAME_API_URL` | Optional public URL for the game API, ending in `/api`; leave unset if the game API is only local |
+
+Do not upload or commit either `.env` file. The `SUPABASE_PUBLISHABLE_KEY` is not needed by these hosted read-only dashboard routes. The signed login session expires after eight hours; logging out clears the browser session. Since Vercel cannot reach a game API running only on your PC, the live active-run count will show as unavailable unless `GAME_API_URL` points to a publicly reachable game API. Player and battle history still loads from Supabase.
+
+Once Vercel gives the project a URL, visit it and sign in with `DASHBOARD_ACCESS_CODE`. To connect the existing GitHub repository, changes must be pushed to GitHub; then Vercel can build each commit automatically.
+
+### Keep the backend running on Windows
+
+To keep the backend available while you are signed into Windows, install the hidden current-user startup task:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-backend-startup.ps1
+```
+
+The supervisor checks the backend health endpoint, starts `backend/dist/main.js` if the service is down, and retries after a crash. Runtime output and supervisor events are written to ignored log files in `backend/`. Remove the startup task with `scripts/remove-backend-startup.ps1`. The task starts when your Windows account signs in; it does not run while the computer is off or the account is signed out.
 
 The dashboard defaults to **Connected game** mode and loads actual records. Settings also offers a clearly marked sample workspace with five fictional trainers and 100 fictional battles; your mode preference is saved locally. Connection failures never silently substitute sample data. The health endpoint reports credential configuration; `GET /api/dashboard` verifies actual database reads.
 
@@ -76,10 +104,10 @@ The existing `../PokemonzApp` game repository was inspected read-only. Its sourc
 1. Configure `backend/.env` using the existing game environment path or the same Supabase server credentials.
 2. Set `NEXT_PUBLIC_API_URL=http://127.0.0.1:3002/api` in `frontend/.env` (or `.env.local`). Restart the frontend if needed. Set `FRONTEND_URL` on the backend to the frontend origin.
 3. For local development, explicitly enable `DASHBOARD_LOCAL_MODE=true`. The backend binds to `127.0.0.1`, checks the actual socket address, and only permits requests without an Origin header or with the exact configured frontend Origin. Forwarded client-IP headers are not trusted.
-4. For production, set `NODE_ENV=production`, disable local mode, and use a Supabase Auth account whose trusted **app metadata** `role` is `admin`. The backend verifies access tokens through Supabase Auth before reading records. User-editable metadata is not accepted.
-5. When admin authentication is required, enter the access token in dashboard Settings. Tokens stay in tab memory and are not persisted. A full sign-in UI and automatic token renewal remain outside this integration.
+4. Set `DASHBOARD_ACCESS_CODE` in `backend/.env` to the shared code admins will enter on the login page. Keep the value on the backend only. Successful sign-in creates an in-memory session that expires after 8 hours or when the backend restarts; Log out revokes it.
+5. For production, set `NODE_ENV=production` and disable `DASHBOARD_LOCAL_MODE`. This makes the backend require a valid access-code session for dashboard data. In local development, the backend still permits loopback data requests from the configured frontend origin.
 
-`GET /api/dashboard` returns `{ players, sessions, battles, metadata }` after enforcing local-development access or verified admin authentication. Service-role credentials remain on the server; this adapter only reads the game tables. It filters encounters to `data_source = real`, preserves registered players with no completed battles, groups chart sessions by game session + night, and includes the saved Pokémon roster. Simulated battles never mix with real gameplay. Missing tokens return 401, non-admins return 403, and unavailable database records return 503. Refresh failures retain the last successful snapshot with an error message.
+`GET /api/dashboard` returns `{ players, sessions, battles, metadata }` after enforcing local-development access or a valid access-code session. Service-role credentials remain on the server; this adapter only reads the game tables. It filters encounters to `data_source = real`, preserves registered players with no completed battles, groups chart sessions by game session + night, and includes the saved Pokémon roster. Simulated battles never mix with real gameplay. Missing or expired sessions return 401, and unavailable database records return 503. Refresh failures retain the last successful snapshot with an error message.
 
 Keyset pagination avoids silently truncating tables at Supabase's usual row limit. Each table is capped at 20,000 records; larger datasets need server-side period aggregation. Damage received is summed from complete logged turns because switching makes `hp_start - hp_end` invalid as a damage total. Missing historical turns produce unavailable damage, not an invented zero. The game currently has no item consumption; legacy non-null item markers are not treated as complete item counts. The legacy alternate-schema endpoint is retained at `/api/dashboard/legacy` and is not used by this integration.
 

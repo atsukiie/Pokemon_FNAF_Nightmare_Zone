@@ -3,7 +3,7 @@ export type RosterMember = { pokemon: string; dex: number | null; type: string; 
 export type Player = { id: string; name: string; pokemon: string; dex: number | null; level: number | null; type: string; hp: number | null; maxHp: number | null; condition: Condition; active: boolean | null; roster?: RosterMember[]; recordedAt?: string | null };
 export type Session = { id: string; label: string; night: number; order: number };
 export type Battle = { id: string; playerId: string; sessionId: string; opponent: string; outcome: 'win' | 'loss'; startingHp: number; remainingHp: number; damageDealt: number; damageReceived: number | null; itemsUsed: number | null };
-export type Dataset = { players: Player[]; sessions: Session[]; battles: Battle[]; metadata?: { source: string; dataSource: string; snapshot: string; activityAvailable: boolean; levelAvailable: boolean; conditionsInferred: boolean; generatedAt: string } };
+export type Dataset = { players: Player[]; sessions: Session[]; battles: Battle[]; activeRuns?: number | null; metadata?: { source: string; dataSource: string; snapshot: string; activityAvailable: boolean; levelAvailable: boolean; conditionsInferred: boolean; generatedAt: string } };
 export const hasHp = (p: { hp: number | null; maxHp: number | null }) => p.hp !== null && p.maxHp !== null && p.maxHp > 0;
 export const hpPercent = (p: { hp: number | null; maxHp: number | null }) => hasHp(p) ? p.hp! / p.maxHp! * 100 : 0;
 export const sampleData: Dataset = {
@@ -58,6 +58,7 @@ export function isDataset(value: unknown): value is Dataset {
   const d = value as Dataset;
   if (!Array.isArray(d.players) || !Array.isArray(d.sessions) || !Array.isArray(d.battles)) return false;
   const finite = (n: unknown) => typeof n === 'number' && Number.isFinite(n);
+  if (d.activeRuns !== undefined && d.activeRuns !== null && (!finite(d.activeRuns) || !Number.isInteger(d.activeRuns) || d.activeRuns < 0)) return false;
   const string = (v: unknown) => typeof v === 'string' && v.length > 0;
   if (!d.players.every(p => p && string(p.id) && string(p.name) && string(p.pokemon) && (p.dex === null || finite(p.dex)) && (p.level === null || finite(p.level)) && string(p.type) && ((p.hp === null && p.maxHp === null) || (finite(p.hp) && finite(p.maxHp) && p.maxHp! > 0 && p.hp! >= 0 && p.hp! <= p.maxHp!)) && ['Healthy', 'Injured', 'Tired', 'Critical', 'Unknown'].includes(p.condition) && (p.active === null || typeof p.active === 'boolean'))) return false;
   if (!d.sessions.every(s => s && string(s.id) && string(s.label) && finite(s.night) && finite(s.order))) return false;
