@@ -1,8 +1,9 @@
 export type Condition = 'Healthy' | 'Injured' | 'Tired' | 'Critical' | 'Unknown';
+export const hpBandLabel = (condition: Condition) => ({ Healthy: 'High HP', Injured: 'Low HP', Tired: 'Mid HP', Critical: '0 HP', Unknown: 'No HP record' })[condition];
 export type RosterMember = { pokemon: string; dex: number | null; type: string; hp: number | null; maxHp: number | null };
 export type Player = { id: string; name: string; pokemon: string; dex: number | null; level: number | null; type: string; hp: number | null; maxHp: number | null; condition: Condition; active: boolean | null; roster?: RosterMember[]; recordedAt?: string | null };
 export type Session = { id: string; label: string; night: number; order: number };
-export type Battle = { id: string; playerId: string; sessionId: string; opponent: string; outcome: 'win' | 'loss'; startingHp: number; remainingHp: number; damageDealt: number; damageReceived: number | null; itemsUsed: number | null };
+export type Battle = { id: string; playerId: string; sessionId: string; opponent: string; outcome: 'win' | 'loss'; startingHp: number; remainingHp: number; damageDealt: number; damageReceived: number | null };
 export type Dataset = { players: Player[]; sessions: Session[]; battles: Battle[]; activeRuns?: number | null; metadata?: { source: string; dataSource: string; snapshot: string; activityAvailable: boolean; levelAvailable: boolean; conditionsInferred: boolean; generatedAt: string } };
 export const hasHp = (p: { hp: number | null; maxHp: number | null }) => p.hp !== null && p.maxHp !== null && p.maxHp > 0;
 export const hpPercent = (p: { hp: number | null; maxHp: number | null }) => hasHp(p) ? p.hp! / p.maxHp! * 100 : 0;
@@ -28,15 +29,14 @@ sampleData.players.forEach((player, p) => sampleData.sessions.forEach((session, 
   for (let b = 0; b < 4; b++) {
     const win = b < wins[p][s], start = Math.min(100, 62 + ((p * 7 + s * 11 + b * 9) % 39));
     const damage = (win ? 10 : 30) + p * 2 + s * 2 + b;
-    sampleData.battles.push({ id: `${player.id}-${session.id}-${b}`, playerId: player.id, sessionId: session.id, opponent: ['Shadow Freddy', 'Mimikyu', 'Haunter', 'Nightmare Bonnie'][b], outcome: win ? 'win' : 'loss', startingHp: start, remainingHp: Math.max(0, start - damage), damageDealt: (win ? 58 : 28) + s * 3 + p * 2, damageReceived: damage, itemsUsed: win ? b % 2 : 1 + (p % 2) });
+    sampleData.battles.push({ id: `${player.id}-${session.id}-${b}`, playerId: player.id, sessionId: session.id, opponent: ['Shadow Freddy', 'Mimikyu', 'Haunter', 'Nightmare Bonnie'][b], outcome: win ? 'win' : 'loss', startingHp: start, remainingHp: Math.max(0, start - damage), damageDealt: (win ? 58 : 28) + s * 3 + p * 2, damageReceived: damage });
   }
 }));
 export const average = (values: number[]) => values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
 export function stats(battles: Battle[]) {
   const wins = battles.filter(b => b.outcome === 'win').length;
   const damage = battles.map(b => b.damageReceived).filter((n): n is number => n !== null);
-  const knownItems = battles.every(b => b.itemsUsed !== null);
-  return { played: battles.length, wins, losses: battles.length - wins, winRate: battles.length ? wins / battles.length * 100 : 0, items: knownItems ? battles.reduce((a, b) => a + b.itemsUsed!, 0) : null, dealt: average(battles.map(b => b.damageDealt)), received: damage.length ? average(damage) : 0, damageRecords: damage.length, itemsKnown: knownItems };
+  return { played: battles.length, wins, losses: battles.length - wins, winRate: battles.length ? wins / battles.length * 100 : 0, dealt: average(battles.map(b => b.damageDealt)), received: damage.length ? average(damage) : 0, damageRecords: damage.length };
 }
 export function correlation(x: number[], y: number[]): number | null {
   if (x.length < 3 || x.length !== y.length) return null;
@@ -64,5 +64,5 @@ export function isDataset(value: unknown): value is Dataset {
   if (!d.sessions.every(s => s && string(s.id) && string(s.label) && finite(s.night) && finite(s.order))) return false;
   if (!d.players.every(p => p.roster === undefined || (Array.isArray(p.roster) && p.roster.every(m => m && string(m.pokemon) && string(m.type) && (m.dex === null || finite(m.dex)) && (m.hp === null || (finite(m.hp) && m.hp >= 0)) && (m.maxHp === null || (finite(m.maxHp) && m.maxHp > 0)))))) return false;
   if (new Set(d.players.map(p => p.id)).size !== d.players.length || new Set(d.sessions.map(s => s.id)).size !== d.sessions.length || new Set(d.battles.map(b => b?.id)).size !== d.battles.length) return false;
-  return d.battles.every(b => b && string(b.id) && d.players.some(p => p.id === b.playerId) && d.sessions.some(s => s.id === b.sessionId) && string(b.opponent) && ['win', 'loss'].includes(b.outcome) && [b.startingHp, b.remainingHp, b.damageDealt].every(n => finite(n) && n >= 0) && [b.damageReceived, b.itemsUsed].every(n => n === null || (finite(n) && n >= 0)));
+  return d.battles.every(b => b && string(b.id) && d.players.some(p => p.id === b.playerId) && d.sessions.some(s => s.id === b.sessionId) && string(b.opponent) && ['win', 'loss'].includes(b.outcome) && [b.startingHp, b.remainingHp, b.damageDealt].every(n => finite(n) && n >= 0) && [b.damageReceived].every(n => n === null || (finite(n) && n >= 0)));
 }

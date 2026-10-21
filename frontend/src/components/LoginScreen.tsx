@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import Image from 'next/image';
 
 type Props = { onAuthenticated: (token: string) => void };
 
@@ -34,9 +35,8 @@ export default function LoginScreen({ onAuthenticated }: Props) {
     <div className="login-backdrop" aria-hidden="true" />
     <div className="login-vignette" aria-hidden="true" />
     <a className="login-brand" href="#home" aria-label="Nightmare Zone Admin home">
-      <span className="login-brand-mark" aria-hidden="true">☻</span>
-      <span className="login-wordmarks"><b>Pokémon</b><i>×</i><em>FNAF</em></span>
-      <strong>NIGHTMARE ZONE</strong><small>ANALYTICS DASHBOARD</small>
+      <Image className="site-logo login-site-logo" src="/pokemon-admin-logo.webp" alt="Pokémon Wiki" width={512} height={512} priority />
+      <span className="login-brand-caption">NIGHTMARE ZONE · ADMIN</span>
     </a>
     <section className="login-card" aria-labelledby="login-title">
       <h1 id="login-title"><span aria-hidden="true">☾</span> WELCOME BACK</h1>

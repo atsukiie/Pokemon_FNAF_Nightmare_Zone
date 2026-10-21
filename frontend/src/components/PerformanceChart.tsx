@@ -1,17 +1,24 @@
 'use client';
 import { useId, useState } from 'react';
-import { average, Battle, Session, stats } from '../lib/dashboard';
+import { average, Battle, Player, Session, stats } from '../lib/dashboard';
 
 type Metric = 'Win rate' | 'Average HP' | 'Battles won' | 'Damage received';
-export default function PerformanceChart({ sessions, battles }: { sessions: Session[]; battles: Battle[] }) {
+export default function PerformanceChart({ sessions, battles, players }: { sessions: Session[]; battles: Battle[]; players?: Player[] }) {
   const [metric, setMetric] = useState<Metric>('Win rate');
   const [hover, setHover] = useState<number | null>(null);
   const gradient = useId().replaceAll(':', '');
-  const points = [...sessions].sort((a, b) => a.order - b.order).slice(-5).map(session => {
+  const points = [...sessions].filter(session => battles.some(battle => battle.sessionId === session.id)).sort((a, b) => a.order - b.order).slice(-5).map(session => {
     const records = battles.filter(b => b.sessionId === session.id), s = stats(records);
     const value = metric === 'Win rate' ? s.winRate : metric === 'Average HP' ? average(records.filter(b => b.startingHp > 0).map(b => b.remainingHp / b.startingHp * 100)) : metric === 'Battles won' ? s.wins : s.received;
-    return { ...session, value, count: metric === 'Damage received' ? s.damageRecords : records.length };
+    return { ...session, value, wins: s.wins, battlesCount: records.length, count: metric === 'Damage received' ? s.damageRecords : records.length };
   }).filter(p => p.count > 0);
+  const playerPoints = (players ?? []).map(player => {
+    const records = battles.filter(battle => battle.playerId === player.id), result = stats(records);
+    const hpRecords = records.filter(battle => battle.startingHp > 0);
+    const count = metric === 'Damage received' ? result.damageRecords : metric === 'Average HP' ? hpRecords.length : records.length;
+    const value = metric === 'Win rate' ? result.winRate : metric === 'Average HP' ? average(hpRecords.map(battle => battle.remainingHp / battle.startingHp * 100)) : metric === 'Battles won' ? result.wins : result.received;
+    return { player, value, count, wins: result.wins, battles: records.length };
+  }).filter(row => row.count > 0).sort((a, b) => metric === 'Damage received' ? a.value - b.value : b.value - a.value);
   const max = metric === 'Win rate' || metric === 'Average HP' ? 100 : Math.max(4, ...points.map(p => Math.ceil(p.value / 4) * 4));
   const x = (i: number) => 48 + (points.length === 1 ? 240 : i * 480 / Math.max(1, points.length - 1));
   const y = (v: number) => 148 - v / max * 118;
@@ -19,19 +26,72 @@ export default function PerformanceChart({ sessions, battles }: { sessions: Sess
   const best = points.length ? points.reduce((a, b) => (metric === 'Damage received' ? b.value < a.value : b.value > a.value) ? b : a) : null;
   const worst = points.length ? points.reduce((a, b) => (metric === 'Damage received' ? b.value > a.value : b.value < a.value) ? b : a) : null;
   const delta = points.length > 1 ? points.at(-1)!.value - points.at(-2)!.value : null;
+  const isPercent = metric === 'Win rate' || metric === 'Average HP';
+  const valueLabel = (value: number) => `${value.toFixed(metric === 'Battles won' ? 0 : 1)}${isPercent ? '%' : ''}`;
+  const shortSessionLabel = (label: string) => label
+    .replace(/^(\d{1,2}\/\d{1,2})\s+(\d{1,2}:\d{2})\s*[·•-]\s*N(\d+)$/, 'N$3 · $2')
+    .replace(/\s*[·•-]\s*N(\d+)$/, ' · Night $1');
+  const metricHelp: Record<Metric, string> = {
+    'Win rate': 'Each point is one recorded session. Labels show wins out of completed battles.',
+    'Average HP': 'Average remaining HP as a percentage of starting HP across recorded battles.',
+    'Battles won': 'Number of wins in each session. Compare counts alongside the battle totals.',
+    'Damage received': 'Average damage received per recorded battle. Lower values mean less damage.',
+  };
+  const latest = points.at(-1), previous = points.at(-2);
+  const recentSessions = points.slice(-3);
+  const recentWins = recentSessions.reduce((sum, point) => sum + point.wins, 0);
+  const recentBattles = recentSessions.reduce((sum, point) => sum + point.battlesCount, 0);
+  const recentWinRate = recentBattles ? recentWins / recentBattles * 100 : 0;
+  const trendText = !latest
+    ? 'No sessions have records for this metric yet.'
+    : metric === 'Win rate'
+      ? `Latest session (${shortSessionLabel(latest.label)}): ${latest.wins} wins / ${latest.battlesCount} battles (${valueLabel(latest.value)}).${previous ? ` Previous session: ${previous.wins} / ${previous.battlesCount} (${valueLabel(previous.value)}).` : ' No previous session is available for comparison.'}${recentSessions.length > 1 ? ` Last ${recentSessions.length} sessions combined: ${recentWins} / ${recentBattles} (${recentWinRate.toFixed(1)}%).` : ''}${latest.battlesCount < 5 ? ` Latest session has only ${latest.battlesCount} ${latest.battlesCount === 1 ? 'battle' : 'battles'}; interpret its rate cautiously.` : ''}`
+      : !previous
+        ? `Latest session: ${valueLabel(latest.value)} ${metric === 'Battles won' ? 'wins' : metric === 'Average HP' ? 'average HP' : 'average damage received'}. There is no earlier session to compare yet.${latest.battlesCount < 5 ? ` Small sample: only ${latest.battlesCount} ${latest.battlesCount === 1 ? 'battle' : 'battles'} in this session.` : ''}`
+        : delta === 0
+          ? `Latest session: ${metric.toLowerCase()} is unchanged at ${valueLabel(latest.value)} compared with the previous session.${latest.battlesCount < 5 ? ` Small sample: only ${latest.battlesCount} ${latest.battlesCount === 1 ? 'battle' : 'battles'} in the latest session.` : ''}`
+          : `Latest session: ${metric.toLowerCase()} is ${valueLabel(latest.value)}, ${Math.abs(delta!).toFixed(1)}${isPercent ? ' percentage points' : ''} ${((metric === 'Damage received' ? delta! < 0 : delta! > 0) ? 'lower' : 'higher')} than the previous session.${latest.battlesCount < 5 ? ` Small sample: only ${latest.battlesCount} ${latest.battlesCount === 1 ? 'battle' : 'battles'} in the latest session.` : ''}`;
+  const playerMetricSummary = !playerPoints?.length
+    ? 'No players have records for this metric in the selected period.'
+    : metric === 'Win rate'
+      ? `Highest win rate: ${playerPoints[0].player.name} (${playerPoints[0].wins} wins from ${playerPoints[0].battles} battles, ${valueLabel(playerPoints[0].value)}).`
+      : metric === 'Damage received'
+        ? `Lowest average damage: ${playerPoints[0].player.name} (${valueLabel(playerPoints[0].value)} across ${playerPoints[0].count} records).`
+        : `${playerPoints[0].player.name} leads in ${metric.toLowerCase()} (${valueLabel(playerPoints[0].value)}).`;
+  if (players) return <section className="panel performance" id="performance">
+    <div className="panel-heading"><h2>PLAYER COMPARISON <span>SELECTED PLAYERS</span></h2><select aria-label="Player comparison metric" value={metric} onChange={e => { setMetric(e.target.value as Metric); setHover(null); }}>{['Win rate', 'Average HP', 'Battles won', 'Damage received'].map(m => <option key={m}>{m}</option>)}</select></div>
+    {!playerPoints.length ? <div className="empty">No player battle records in this period.</div> : <>
+      <div className="chart-meta"><span><i className="legend-dot"/>{metric}{metric === 'Average HP' && ' (% of starting HP)'}</span><span className="muted">Ranked by selected metric · battle counts shown</span></div>
+      <p className="chart-explanation">Compare players using the selected measure. Battle counts show how much history supports each rate.</p>
+      <div className="player-comparison-list">{playerPoints.map(row => <div className="player-comparison-row" key={row.player.id}>
+        <span className="player-comparison-name scroll-label" title={row.player.name}>{row.player.name}</span>
+        <span className="player-comparison-track" role="img" aria-label={`${row.player.name}: ${valueLabel(row.value)}`}><i style={{ width: `${Math.max(0, Math.min(100, metric === 'Battles won' ? row.value / Math.max(1, ...playerPoints.map(point => point.value)) * 100 : row.value))}%` }}/></span>
+        <strong className="player-comparison-value">{valueLabel(row.value)}</strong>
+        <small>{row.wins}/{row.battles} wins</small>
+      </div>)}</div>
+      <p className="chart-takeaway">{playerMetricSummary}</p>
+    </>}
+  </section>;
   return <section className="panel performance" id="performance">
-    <div className="panel-heading"><h2>TEAM PERFORMANCE <span>LAST 5 SESSIONS</span></h2><select aria-label="Performance metric" value={metric} onChange={e => { setMetric(e.target.value as Metric); setHover(null); }}>{['Win rate', 'Average HP', 'Battles won', 'Damage received'].map(m => <option key={m}>{m}</option>)}</select></div>
+    <div className="panel-heading"><h2>TEAM PERFORMANCE <span>LATEST 5 RECORDED SESSIONS</span></h2><select aria-label="Performance metric" value={metric} onChange={e => { setMetric(e.target.value as Metric); setHover(null); }}>{['Win rate', 'Average HP', 'Battles won', 'Damage received'].map(m => <option key={m}>{m}</option>)}</select></div>
     {!points.length ? <div className="empty">No battle records in this period.</div> : <>
-    <div className="chart-meta"><span><i className="legend-dot"/>{metric}{metric === 'Average HP' && ' (% of starting HP)'}</span><span className="muted">{delta === null ? 'First recorded session' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}${metric === 'Win rate' || metric === 'Average HP' ? ' pp' : ''} vs. previous session`}</span></div>
-    <svg className="line-chart" viewBox="0 0 570 185" role="img" aria-label={`${metric} over ${points.length} sessions`}>
+    <div className="chart-meta"><span><i className="legend-dot"/>{metric}{metric === 'Average HP' && ' (% of starting HP)'}</span><span className="muted">Sessions ordered oldest to newest · labels show night and time</span></div>
+    <p className="chart-explanation">{metricHelp[metric]}</p>
+    {points.length === 1 ? <div className="single-session-summary" role="group" aria-label={`${metric} for ${points[0].label}`}>
+      <div className="single-session-value">{valueLabel(points[0].value)}<span>{metric}</span></div>
+      <div className="single-session-meta"><strong>{points[0].label}</strong><span>{metric === 'Win rate' ? `${points[0].wins} wins from ${points[0].count} ${points[0].count === 1 ? 'battle' : 'battles'}` : `${points[0].count} ${points[0].count === 1 ? 'record' : 'records'} in this session`}</span></div>
+      {isPercent && <div className="single-session-track" role="img" aria-label={`${valueLabel(points[0].value)} of 100`}><span style={{ width: `${Math.max(0, Math.min(100, points[0].value))}%` }}/></div>}
+      {points[0].count < 5 && <p className="single-session-caveat">Small sample: this result is based on fewer than 5 {metric === 'Damage received' ? 'damage records' : 'battles'}.</p>}
+    </div> : <svg className="line-chart" viewBox="0 0 570 185" role="img" aria-label={`${metric} over ${points.length} sessions`}>
       <defs><linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#a855f7" stopOpacity=".28"/><stop offset="100%" stopColor="#a855f7" stopOpacity="0"/></linearGradient></defs>
-      {[0, 1, 2, 3, 4].map(t => <g key={t}><line x1="48" x2="528" y1={y(t * max / 4)} y2={y(t * max / 4)} stroke="#28243e" strokeDasharray="3 4"/><text x="35" y={y(t * max / 4) + 4} textAnchor="end">{Math.round(t * max / 4)}</text></g>)}
+      {[0, 1, 2, 3, 4].map(t => <g key={t}><line x1="48" x2="528" y1={y(t * max / 4)} y2={y(t * max / 4)} stroke="#28243e" strokeDasharray="3 4"/><text x="35" y={y(t * max / 4) + 4} textAnchor="end">{Math.round(t * max / 4)}{isPercent ? '%' : ''}</text></g>)}
       <polygon points={`${x(0)},148 ${line} ${x(points.length - 1)},148`} fill={`url(#${gradient})`}/>
       <polyline points={line} stroke="#c16bfa" fill="none" strokeWidth="2.5" strokeLinejoin="round"/>
-      {points.map((p, i) => <g key={p.id}><line x1={x(i)} x2={x(i)} y1="30" y2="148" stroke="#28243e" opacity=".4"/><circle cx={x(i)} cy={y(p.value)} r={hover === i ? 6 : 4.5} fill="#c16bfa" stroke="#21102f" strokeWidth="2" tabIndex={0} aria-label={`${p.label}: ${p.value.toFixed(1)}`} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(i)} onBlur={() => setHover(null)}/><text x={x(i)} y="173" textAnchor="middle">{p.label}</text></g>)}
-      {hover !== null && points[hover] && <g pointerEvents="none"><rect x={Math.min(438, Math.max(48, x(hover) - 55))} y="2" width="110" height="23" rx="5" fill="#eee4ff"/><text x={Math.min(438, Math.max(48, x(hover) - 55)) + 55} y="18" textAnchor="middle" style={{ fill: '#251438' }}>{points[hover].value.toFixed(1)}{metric === 'Win rate' || metric === 'Average HP' ? '%' : ''} · Night {points[hover].night}</text></g>}
-    </svg>
-    <div className="chart-footer"><span>Best <strong>{best?.label}</strong></span><span>Lowest performance <strong>{worst?.label}</strong></span></div>
+      {points.map((p, i) => <g key={p.id}><line x1={x(i)} x2={x(i)} y1="30" y2="148" stroke="#28243e" opacity=".4"/><circle cx={x(i)} cy={y(p.value)} r={hover === i ? 6 : 4.5} fill="#c16bfa" stroke="#21102f" strokeWidth="2" tabIndex={0} aria-label={`${p.label}: ${valueLabel(p.value)}${metric === 'Win rate' ? `, ${p.wins} wins from ${p.count} battles` : `, ${p.count} records`}`} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(i)} onBlur={() => setHover(null)}/><text className="point-value" x={x(i)} y={Math.max(17, y(p.value) - 12)} textAnchor="middle">{metric === 'Win rate' ? `${p.wins} of ${p.count}` : valueLabel(p.value)}</text><text x={x(i)} y="173" textAnchor="middle">{shortSessionLabel(p.label)}</text></g>)}
+      {hover !== null && points[hover] && <g pointerEvents="none"><rect x={Math.min(383, Math.max(48, x(hover) - 72))} y="2" width="145" height="23" rx="5" fill="#eee4ff"/><text x={Math.min(383, Math.max(48, x(hover) - 72)) + 72} y="18" textAnchor="middle" style={{ fill: '#251438' }}>{valueLabel(points[hover].value)} - {metric === 'Win rate' ? `${points[hover].wins}/${points[hover].count} wins` : `n=${points[hover].count}`}</text></g>}
+    </svg>}
+    <p className="chart-takeaway">{trendText}</p>
+    <div className="chart-footer"><span>{metric === 'Damage received' ? 'Lowest damage' : 'Highest value'} <strong>{best ? shortSessionLabel(best.label) : ''}</strong></span><span>{metric === 'Damage received' ? 'Highest damage' : 'Lowest value'} <strong>{worst ? shortSessionLabel(worst.label) : ''}</strong></span></div>
     </>}
   </section>;
 }

@@ -3,7 +3,7 @@ export type PokemonRecord = { id: number; name: string; types: string[] };
 export type EncounterRecord = {
   id: number; run_id: string; session_id: string; player_id: string; player_name: string | null;
   night: number; team: string; team_state: { pokemon: string; hp_end: number }[] | null;
-  opponent: string; hp_start: number; hp_end: number; damage_dealt: number; item_used: string | null;
+  opponent: string; hp_start: number; hp_end: number; damage_dealt: number;
   outcome: 'win' | 'loss'; data_source: string; created_at: string; turn_count: number;
   turns: { turn_number: number; active_pokemon: string; damage_taken: number }[];
 };
@@ -33,16 +33,21 @@ export function mapGameplayRecords(registered: GamePlayer[], records: EncounterR
   // A game session may contain several nights. Split the dashboard chart bucket
   // by session + night so the night filter cannot mix results from other nights.
   const groups = new Map<string, { id: string; label: string; night: number; order: number }>();
+  const labelCounts = new Map<string, number>();
   for (const e of encounters) {
     const id = `${e.session_id}:night-${e.night}`;
-    if (!groups.has(id)) groups.set(id, { id, label: `Session ${groups.size + 1}`, night: e.night, order: groups.size + 1 });
+    if (!groups.has(id)) {
+      const dateLabel = `${e.created_at.slice(5, 10).replace('-', '/')} ${e.created_at.slice(11, 16)} · N${e.night}`;
+      const occurrence = (labelCounts.get(dateLabel) ?? 0) + 1;
+      labelCounts.set(dateLabel, occurrence);
+      groups.set(id, { id, label: occurrence === 1 ? dateLabel : `${dateLabel} · #${occurrence}`, night: e.night, order: groups.size + 1 });
+    }
   }
   const battles = encounters.map(e => ({
     id: String(e.id), playerId: e.player_id, sessionId: `${e.session_id}:night-${e.night}`, opponent: e.opponent,
     outcome: e.outcome, startingHp: e.hp_start, remainingHp: e.hp_end, damageDealt: e.damage_dealt,
     // Switching teammates makes hp_start - hp_end an invalid damage total.
     damageReceived: e.turns?.length === e.turn_count ? e.turns.reduce((n, t) => n + t.damage_taken, 0) : null,
-    itemsUsed: e.item_used === null ? 0 : null,
   }));
   return { players, sessions: [...groups.values()], battles, metadata: { source: 'game-supabase', dataSource: 'real', snapshot: 'latest-completed-encounter', activityAvailable: false, levelAvailable: false, conditionsInferred: true, generatedAt: new Date().toISOString() } };
 }

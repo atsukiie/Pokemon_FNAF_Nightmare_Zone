@@ -1,5 +1,5 @@
 import type { Battle, Dataset, Player } from '../lib/dashboard';
-import { hpPercent, hasHp, stats } from '../lib/dashboard';
+import { hpBandLabel, hpPercent, hasHp, stats } from '../lib/dashboard';
 
 type Props = {
   data: Dataset;
@@ -57,7 +57,7 @@ export default function AdminOverview({ data, battles, updated, loading, mode, a
       <article><span>Registered trainers</span><strong>{data.players.length}</strong><small>Accounts in the game database</small></article>
       <article><span>Active game runs</span><strong>{mode === 'sample' ? '—' : data.activeRuns ?? '—'}</strong><small>{mode === 'sample' ? 'Switch to live data to view' : data.activeRuns === null || data.activeRuns === undefined ? 'Game API is unavailable' : `Currently open${autoRefresh ? ' · updates every 5s' : ' · auto-refresh off'}`}</small></article>
       <article><span>Completed battles</span><strong>{result.played}</strong><small>{result.wins} wins · {result.losses} losses</small></article>
-      <article><span>Team win rate</span><strong>{result.played ? rate(result.winRate) : '—'}</strong><small>Wins divided by completed battles</small></article>
+      <article><span>Selected group win rate</span><strong>{result.played ? rate(result.winRate) : '—'}</strong><small>Wins ÷ battles in current filters</small></article>
       <article><span>Nights played</span><strong>{nights}</strong><small>With recorded encounters</small></article>
     </div>
 
@@ -66,7 +66,7 @@ export default function AdminOverview({ data, battles, updated, loading, mode, a
         <div className="overview-card-heading"><div><h3>Top players</h3><p>Ranked by wins, then win rate. Battle counts show the sample size.</p></div><span>{ranked.length} trainers</span></div>
         {ranked.length ? <div className="leaderboard-list">{ranked.slice(0, 8).map((entry, index) => <button className="leaderboard-row" key={entry.player.id} onClick={() => onPlayer(entry.player)}>
           <span className="rank-number">{index + 1}</span>
-          <span className="leader-player"><strong>{entry.player.name}</strong><small>{entry.player.pokemon}</small></span>
+          <span className="leader-player"><strong className="scroll-label" title={entry.player.name}>{entry.player.name}</strong><small className="scroll-label" title={entry.player.pokemon}>{entry.player.pokemon}</small></span>
           <span className="leader-wins"><strong>{entry.wins}</strong><small>wins</small></span>
           <span className="leader-count">{entry.played} <small>battles</small></span>
           <span className="leader-rate">{entry.played ? rate(entry.winRate) : '—'}</span>
@@ -80,8 +80,8 @@ export default function AdminOverview({ data, battles, updated, loading, mode, a
           const session = sessions.get(battle.sessionId);
           return <article className="recent-row" key={battle.id}>
             <span className={`result-mark ${battle.outcome}`}>{battle.outcome === 'win' ? 'W' : 'L'}</span>
-            <div><strong>{player?.name ?? 'Unknown trainer'}</strong><small>{session ? `Night ${session.night} · ${session.label}` : 'Recorded encounter'}</small></div>
-            <span className="battle-opponent">vs. {battle.opponent}</span>
+            <div><strong className="scroll-label" title={player?.name ?? 'Unknown trainer'}>{player?.name ?? 'Unknown trainer'}</strong><small className="scroll-label" title={session ? `Night ${session.night} · ${session.label}` : 'Recorded encounter'}>{session ? `Night ${session.night} · ${session.label}` : 'Recorded encounter'}</small></div>
+            <span className="battle-opponent scroll-label" title={`vs. ${battle.opponent}`}>vs. {battle.opponent}</span>
             <span className={`battle-outcome ${battle.outcome}`}>{battle.outcome === 'win' ? 'Win' : 'Loss'}</span>
           </article>;
         })}</div> : <p className="overview-empty">No completed battles have been recorded yet.</p>}
@@ -92,7 +92,7 @@ export default function AdminOverview({ data, battles, updated, loading, mode, a
         {endurance.length ? <div className="endurance-table">
           <div className="endurance-row endurance-header"><span>Player</span><span>Nights survived</span><span>Longest shift</span></div>
           {endurance.map(({ player, survived, longestShift }) => <button className="endurance-row" key={player.id} onClick={() => onPlayer(player)}>
-            <span className="endurance-player"><strong>{player.name}</strong><small>{player.pokemon}</small></span>
+            <span className="endurance-player"><strong className="scroll-label" title={player.name}>{player.name}</strong><small className="scroll-label" title={player.pokemon}>{player.pokemon}</small></span>
             <strong>{survived}</strong><strong>{longestShift}</strong>
           </button>)}
         </div> : <p className="overview-empty">No registered players were returned by the game database.</p>}
@@ -100,13 +100,13 @@ export default function AdminOverview({ data, battles, updated, loading, mode, a
       </section>
 
       <section className="overview-card hp-card">
-        <div className="overview-card-heading"><div><h3>Lowest last recorded HP</h3><p>From each trainer’s latest completed encounter.</p></div></div>
+        <div className="overview-card-heading"><div><h3>Lowest HP in latest records</h3><p>Players with the least HP at the end of their latest recorded encounters.</p></div></div>
         {hpWatch.length ? <div className="hp-watch-list">{hpWatch.map(player => <div className="hp-watch-row" key={player.id}>
-          <span><strong>{player.name}</strong><small>{player.pokemon} · {player.condition}</small></span>
+          <span><strong className="scroll-label" title={player.name}>{player.name}</strong><small className="scroll-label" title={`${player.pokemon} · ${hpBandLabel(player.condition)}`}>{player.pokemon} / {hpBandLabel(player.condition)}</small></span>
           <span className="hp-watch-value">{player.hp}<small> / {player.maxHp} HP</small></span>
           <span className="hp-meter"><i className={player.condition.toLowerCase()} style={{ width: `${Math.min(100, hpPercent(player))}%` }} /></span>
         </div>)}</div> : <p className="overview-empty">No HP snapshots are available yet.</p>}
-        <p className="overview-footnote">This is historical encounter data, not current in-game HP. HP resets at the start of a new night.</p>
+        <p className="overview-footnote">Historical encounter data only. HP resets each night, so this is not a current status indicator.</p>
       </section>
 
       <section className="overview-card readme-card">

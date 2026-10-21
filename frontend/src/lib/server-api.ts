@@ -84,7 +84,7 @@ export async function dashboard(request: Request) {
   try {
     const client = database();
     const [encounters, players, pokemon] = await Promise.all([
-      readRows<EncounterRecord>(client, 'encounters', 'id,run_id,session_id,player_id,player_name,night,team,team_state,opponent,hp_start,hp_end,damage_dealt,item_used,outcome,data_source,created_at,turn_count,turns(turn_number,active_pokemon,damage_taken)', 'id', true),
+      readRows<EncounterRecord>(client, 'encounters', 'id,run_id,session_id,player_id,player_name,night,team,team_state,opponent,hp_start,hp_end,damage_dealt,outcome,data_source,created_at,turn_count,turns(turn_number,active_pokemon,damage_taken)', 'id', true),
       readRows<GamePlayer>(client, 'players', 'id,display_name', 'id'),
       readRows<PokemonRecord>(client, 'pokemon', 'id,name,types', 'id'),
     ]);
