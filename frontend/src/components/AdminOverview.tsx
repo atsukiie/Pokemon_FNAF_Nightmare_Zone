@@ -49,7 +49,7 @@ export default function AdminOverview({ data, battles, updated, loading, mode, a
       <div className="overview-source">
         <span className={`source-dot ${connectionError ? 'offline' : ''}`} />
         <span>{connectionError ? 'Connection issue' : mode === 'live' ? 'Connected game data' : 'Sample data'}</span>
-        {updated && <small>Updated {updated}</small>}
+        {updated && <small>Data as of {updated}</small>}
         <button onClick={onRefresh} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
       </div>
     </div>

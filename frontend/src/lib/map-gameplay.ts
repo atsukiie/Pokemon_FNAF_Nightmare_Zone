@@ -5,7 +5,7 @@ export type EncounterRecord = {
   night: number; team: string; team_state: { pokemon: string; hp_end: number }[] | null;
   opponent: string; hp_start: number; hp_end: number; damage_dealt: number;
   outcome: 'win' | 'loss'; data_source: string; created_at: string; turn_count: number;
-  turns: { turn_number: number; active_pokemon: string; damage_taken: number }[];
+  turns: { turn_number: number; active_pokemon: string; hp_before: number; hp_after: number }[];
 };
 
 const title = (s: string) => s ? s[0].toUpperCase() + s.slice(1) : 'Unknown';
@@ -50,7 +50,8 @@ export function mapGameplayRecords(registered: GamePlayer[], records: EncounterR
       return { pokemon: name, dex: info?.id ?? null, types: info?.types.map(title) ?? [] };
     }),
     outcome: e.outcome, startingHp: e.hp_start, remainingHp: e.hp_end, damageDealt: e.damage_dealt,
-    damageReceived: e.turns?.length === e.turn_count ? e.turns.reduce((n, t) => n + t.damage_taken, 0) : null,
+    // Sum actual HP lost so overkill damage does not inflate this metric.
+    damageReceived: e.turns?.length === e.turn_count ? e.turns.reduce((n, t) => n + Math.max(0, t.hp_before - t.hp_after), 0) : null,
   }));
   return { players, sessions: [...groups.values()], battles, metadata: { source: 'game-supabase', dataSource: 'real', snapshot: 'latest-completed-encounter', activityAvailable: false, levelAvailable: false, conditionsInferred: true, generatedAt: new Date().toISOString() } };
 }
