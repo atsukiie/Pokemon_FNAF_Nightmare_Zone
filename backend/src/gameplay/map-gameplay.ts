@@ -8,7 +8,8 @@ export type EncounterRecord = {
   turns: { turn_number: number; active_pokemon: string; damage_taken: number }[];
 };
 const title = (s: string) => s ? s[0].toUpperCase() + s.slice(1) : 'Unknown';
-export function mapGameplayRecords(registered: GamePlayer[], records: EncounterRecord[], catalog: PokemonRecord[]) {
+export function mapGameplayRecords(registered: GamePlayer[], records: EncounterRecord[], catalog: PokemonRecord[], profiles: { player_id: string; mmr: number | null }[] = []) {
+  const ratings = new Map(profiles.map(profile => [profile.player_id, profile.mmr]));
   const encounters = records.filter(r => r.data_source === 'real').sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id);
   const byName = new Map(catalog.map(p => [p.name.toLowerCase(), p]));
   const latest = new Map<string, EncounterRecord>();
@@ -26,9 +27,9 @@ export function mapGameplayRecords(registered: GamePlayer[], records: EncounterR
     const max = e?.hp_start || null;
     const roster = e ? (e.team_state?.length ? e.team_state : e.team.split(', ').map(pokemon => ({ pokemon, hp_end: null }))).map(m => {
       const info = byName.get(m.pokemon.toLowerCase());
-      return { pokemon: m.pokemon, dex: info?.id ?? null, type: title(info?.types[0] || ''), hp: m.hp_end, maxHp: max };
+      return { pokemon: m.pokemon, dex: info?.id ?? null, type: title(info?.types[0] || ''), types: info?.types.map(title) ?? [], hp: m.hp_end, maxHp: max };
     }) : [];
-    return { id: p.id, name: p.display_name || e?.player_name || p.id, pokemon: chosen || 'Not recorded', dex: species?.id ?? null, level: null, type: title(species?.types[0] || ''), hp: e?.hp_end ?? null, maxHp: max, condition: condition(e?.hp_end ?? null, max), active: null, roster, recordedAt: e?.created_at ?? null };
+    return { id: p.id, mmr: Number.isFinite(ratings.get(p.id)) ? ratings.get(p.id)! : null, name: p.display_name || e?.player_name || p.id, pokemon: chosen || 'Not recorded', dex: species?.id ?? null, level: null, type: title(species?.types[0] || ''), types: species?.types.map(title) ?? [], hp: e?.hp_end ?? null, maxHp: max, condition: condition(e?.hp_end ?? null, max), active: null, roster, recordedAt: e?.created_at ?? null };
   });
   // A game session may contain several nights. Split the dashboard chart bucket
   // by session + night so the night filter cannot mix results from other nights.
@@ -45,6 +46,10 @@ export function mapGameplayRecords(registered: GamePlayer[], records: EncounterR
   }
   const battles = encounters.map(e => ({
     id: String(e.id), playerId: e.player_id, sessionId: `${e.session_id}:night-${e.night}`, opponent: e.opponent,
+    pokemon: [...new Set([...e.team.split(',').map(name => name.trim()).filter(Boolean), ...(e.team_state ?? []).map(member => member.pokemon), ...(e.turns ?? []).map(turn => turn.active_pokemon)])].map(name => {
+      const info = byName.get(name.toLowerCase());
+      return { pokemon: name, dex: info?.id ?? null, types: info?.types.map(title) ?? [] };
+    }),
     outcome: e.outcome, startingHp: e.hp_start, remainingHp: e.hp_end, damageDealt: e.damage_dealt,
     // Switching teammates makes hp_start - hp_end an invalid damage total.
     damageReceived: e.turns?.length === e.turn_count ? e.turns.reduce((n, t) => n + t.damage_taken, 0) : null,

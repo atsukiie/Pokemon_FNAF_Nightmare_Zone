@@ -105,12 +105,13 @@ export class GameplayService {
   }
   async dashboard() {
     // Ongoing player state is never reconstructed from completed encounters.
-    const [encounters, players, pokemon, activeRuns] = await Promise.all([
+    const [encounters, players, pokemon, activeRuns, profiles] = await Promise.all([
       this.readRows<EncounterRecord>('encounters', 'id,run_id,session_id,player_id,player_name,night,team,team_state,opponent,hp_start,hp_end,damage_dealt,outcome,data_source,created_at,turn_count,turns(turn_number,active_pokemon,damage_taken)', 'id', true),
       this.readRows<GamePlayer>('players', 'id,display_name', 'id'),
       this.readRows<PokemonRecord>('pokemon', 'id,name,types', 'id'),
       this.readActiveRunCount(),
+      this.readRows<{ player_id: string; mmr: number | null }>('trainer_profiles', 'player_id,mmr', 'player_id'),
     ]);
-    return { ...mapGameplayRecords(players, encounters, pokemon), activeRuns };
+    return { ...mapGameplayRecords(players, encounters, pokemon, profiles), activeRuns };
   }
 }

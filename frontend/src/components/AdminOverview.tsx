@@ -18,7 +18,8 @@ const rate = (value: number) => `${Math.round(value)}%`;
 export default function AdminOverview({ data, battles, updated, loading, mode, autoRefresh, connectionError, onRefresh, onPlayer }: Props) {
   const result = stats(battles);
   const ranked = data.players.map(player => ({ player, ...stats(battles.filter(battle => battle.playerId === player.id)) }))
-    .sort((a, b) => b.wins - a.wins || b.winRate - a.winRate || b.played - a.played);
+    .filter(entry => typeof entry.player.mmr === 'number' && Number.isFinite(entry.player.mmr))
+    .sort((a, b) => b.player.mmr! - a.player.mmr! || a.player.name.localeCompare(b.player.name));
   const recent = [...battles].slice(-6).reverse();
   const sessions = new Map(data.sessions.map(session => [session.id, session]));
   const hpWatch = data.players.filter(hasHp).sort((a, b) => hpPercent(a) - hpPercent(b)).slice(0, 3);
@@ -63,14 +64,14 @@ export default function AdminOverview({ data, battles, updated, loading, mode, a
 
     <div className="overview-columns">
       <section className="overview-card leaderboard-card">
-        <div className="overview-card-heading"><div><h3>Top players</h3><p>Ranked by wins, then win rate. Battle counts show the sample size.</p></div><span>{ranked.length} trainers</span></div>
+        <div className="overview-card-heading"><div><h3>Top players</h3><p>Ranked by current MMR, highest first. Equal ratings are ordered by name.</p></div><span>{ranked.length} rated trainers</span></div>
         {ranked.length ? <div className="leaderboard-list">{ranked.slice(0, 8).map((entry, index) => <button className="leaderboard-row" key={entry.player.id} onClick={() => onPlayer(entry.player)}>
           <span className="rank-number">{index + 1}</span>
           <span className="leader-player"><strong className="scroll-label" title={entry.player.name}>{entry.player.name}</strong><small className="scroll-label" title={entry.player.pokemon}>{entry.player.pokemon}</small></span>
-          <span className="leader-wins"><strong>{entry.wins}</strong><small>wins</small></span>
+          <span className="leader-wins"><strong>{entry.player.mmr?.toLocaleString()}</strong><small>MMR</small></span>
           <span className="leader-count">{entry.played} <small>battles</small></span>
           <span className="leader-rate">{entry.played ? rate(entry.winRate) : '—'}</span>
-        </button>)}</div> : <p className="overview-empty">No registered players were returned by the game database.</p>}
+        </button>)}</div> : <p className="overview-empty">No player MMR records are available.</p>}
       </section>
 
       <section className="overview-card recent-card">
@@ -112,7 +113,7 @@ export default function AdminOverview({ data, battles, updated, loading, mode, a
       <section className="overview-card readme-card">
         <h3>How to read this page</h3>
         <ul>
-          <li>Battle totals and rankings come from completed game encounters.</li>
+          <li>Battle totals come from completed encounters. Top players uses current stored MMR, independent of battle filters; players without MMR are excluded.</li>
           <li>Active runs are counted by the live game API; it does not expose each player’s current run or HP.</li>
           <li>Win rate is wins divided by completed battles; small samples can move quickly.</li>
           <li>Live player presence and levels are not recorded by the game database.</li>

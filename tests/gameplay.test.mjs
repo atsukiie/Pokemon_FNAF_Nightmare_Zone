@@ -9,6 +9,23 @@ const { ConfigService } = require('@nestjs/config');
 const catalog = [{ id: 6, name: 'Charizard', types: ['fire', 'flying'] }, { id: 9, name: 'Blastoise', types: ['water'] }];
 const encounter = { id: 1, run_id: 'run', session_id: 's1', player_id: '001', player_name: 'Trainer', night: 1, team: 'Charizard, Blastoise', team_state: [{ pokemon: 'Charizard', hp_end: 0 }, { pokemon: 'Blastoise', hp_end: 179 }], opponent: 'Freddy', hp_start: 620, hp_end: 179, damage_dealt: 1530, item_used: null, outcome: 'win', data_source: 'real', created_at: '2026-10-20T08:00:00Z', turn_count: 2, turns: [{ turn_number: 1, active_pokemon: 'Charizard', damage_taken: 620 }, { turn_number: 2, active_pokemon: 'Blastoise', damage_taken: 441 }] };
 
+test('saved teams preserve both types and include each species only once per battle', () => {
+  const data = mapGameplayRecords([], [encounter], catalog);
+  assert.deepEqual(data.players[0].roster[0].types, ['Fire', 'Flying']);
+  assert.deepEqual(data.battles[0].pokemon.map(p => p.pokemon), ['Charizard', 'Blastoise']);
+  assert.deepEqual(data.battles[0].pokemon[0].types, ['Fire', 'Flying']);
+  assert.equal(isDataset(data), true);
+  assert.equal(isDataset({ ...data, battles: [{ ...data.battles[0], pokemon: [{ pokemon: 'Charizard', dex: 6, types: [123] }] }] }), false);
+});
+
+test('MMR joins by player ID and preserves zero and missing ratings', () => {
+  const players = ['001', '002', '003'].map(id => ({ id, display_name: id }));
+  const data = mapGameplayRecords(players, [], catalog, [{ player_id: '002', mmr: 0 }, { player_id: '001', mmr: 1500 }]);
+  assert.deepEqual(data.players.map(p => p.mmr), [1500, 0, null]);
+  assert.equal(isDataset(data), true);
+  assert.equal(isDataset({ ...data, players: [{ ...data.players[0], mmr: '1500' }] }), false);
+});
+
 test('game records map actual roster and turn damage without inventing levels or activity', () => {
   const data = mapGameplayRecords([{ id: '001', display_name: 'Trainer' }, { id: '002', display_name: 'New player' }], [encounter], catalog);
   assert.equal(isDataset(data), true);

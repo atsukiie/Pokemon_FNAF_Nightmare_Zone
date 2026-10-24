@@ -83,12 +83,13 @@ export async function dashboard(request: Request) {
   if (!hasValidSession(request)) return response('An administrator access token is required.', 401);
   try {
     const client = database();
-    const [encounters, players, pokemon] = await Promise.all([
+    const [encounters, players, pokemon, profiles] = await Promise.all([
       readRows<EncounterRecord>(client, 'encounters', 'id,run_id,session_id,player_id,player_name,night,team,team_state,opponent,hp_start,hp_end,damage_dealt,outcome,data_source,created_at,turn_count,turns(turn_number,active_pokemon,damage_taken)', 'id', true),
       readRows<GamePlayer>(client, 'players', 'id,display_name', 'id'),
       readRows<PokemonRecord>(client, 'pokemon', 'id,name,types', 'id'),
+      readRows<{ player_id: string; mmr: number | null }>(client, 'trainer_profiles', 'player_id,mmr', 'player_id'),
     ]);
-    return Response.json({ ...mapGameplayRecords(players, encounters, pokemon), activeRuns: null }, { headers: { 'Cache-Control': 'no-store' } });
+    return Response.json({ ...mapGameplayRecords(players, encounters, pokemon, profiles), activeRuns: null }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     return response(error instanceof Error ? error.message : 'Gameplay records unavailable.', 503);
   }

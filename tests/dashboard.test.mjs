@@ -1,6 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleData, stats, average, correlation, historicalEstimate, isDataset } from '../frontend/src/lib/dashboard.ts';
+import { sampleData, stats, average, correlation, historicalEstimate, isDataset, rosterComposition } from '../frontend/src/lib/dashboard.ts';
+
+test('composition includes secondary types, deduplicates repeat battles, and respects selected players', () => {
+  const charizard = { pokemon: 'Charizard', dex: 6, types: ['Fire', 'Flying'] };
+  const gengar = { pokemon: 'Gengar', dex: 94, types: ['Ghost', 'Poison'] };
+  const battles = [
+    { playerId: 'vean', pokemon: [charizard, gengar] },
+    { playerId: 'vean', pokemon: [charizard] },
+    { playerId: 'clark', pokemon: [charizard] },
+  ];
+  const result = rosterComposition(sampleData.players, battles);
+  assert.equal(result.total, 3);
+  assert.equal(result.groups.find(g => g.type === 'Flying').count, 2);
+  assert.equal(result.groups.find(g => g.type === 'Fire').pokemon.length, 1);
+  assert.equal(result.groups.find(g => g.type === 'Fire').pokemon[0].players, 2);
+  assert.deepEqual(result.groups.map(group => group.type), ['Fire', 'Flying', 'Ghost', 'Poison']);
+  assert.deepEqual(result.groups[0].owners.map(owner => owner.name), ['Clark', 'Vean']);
+  assert.deepEqual(result.groups[0].pokemon[0].owners.map(owner => owner.id), ['clark', 'vean']);
+  assert.equal(result.groups.find(g => g.type === 'Poison').count, 1);
+  assert.equal(rosterComposition([sampleData.players[0]], battles).total, 2);
+  assert.equal(rosterComposition(sampleData.players, []).total, 0);
+});
 
 test('sample records are relationally valid and aggregate consistently', () => {
   assert.equal(isDataset(sampleData), true);

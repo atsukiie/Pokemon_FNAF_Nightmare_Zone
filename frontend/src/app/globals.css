@@ -79,6 +79,8 @@ body{font-size:14px}.nav-label{font-size:10px}.nav-item{font-size:13px}.brand-su
 
 .chart-explanation{padding:0 18px;margin:0;color:#b8a9c8;font-size:12px;line-height:1.55}.chart-takeaway{margin:2px 15px 10px;padding:10px 12px;border-left:3px solid #a76be0;border-radius:0 5px 5px 0;background:#21182b;color:#e0d1ef;font-size:13px;line-height:1.55}.chart-meta{font-size:11px}.chart-footer{font-size:11px;gap:8px}.line-chart text{font-size:11px}.performance .panel-heading h2{font-size:15px}@media(max-width:600px){.chart-explanation{padding:0 12px;font-size:11px}.chart-takeaway{margin:2px 11px 9px;font-size:12px}.chart-meta{padding-left:12px;padding-right:12px;flex-direction:column;align-items:flex-start}}
 
+.composition-pokemon{grid-column:1/-1;min-width:0;margin:5px 0}.composition-pokemon summary{cursor:pointer;color:#c7a4ee;font-size:12px;padding:7px 0;overflow-wrap:anywhere}.composition-pokemon summary:focus-visible{outline:2px solid #c16bfa;outline-offset:2px}.composition-pokemon ul{list-style:none;margin:6px 0 0;padding:0;max-height:260px;overflow-y:auto;overflow-x:hidden}.composition-pokemon li{padding:10px;background:#ffffff04;border:1px solid #30233f;border-radius:6px;margin-bottom:6px;min-width:0}.composition-pokemon li>div:first-child{display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:space-between}.composition-pokemon li strong{font-size:13px;text-align:left;overflow-wrap:anywhere;min-width:0}.composition-pokemon li>div>span{font-size:11px;color:#a593b7}.composition-type-badges{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}.composition-type-badges span{border:1px solid currentColor;border-radius:4px;padding:2px 6px;font-size:11px;color:var(--accent,#bc9ee8)}
+.performance-history-scroll{overflow-x:auto;max-width:100%;scrollbar-width:thin;scrollbar-color:#8650b0 #151020}.performance-history-scroll:focus-visible{outline:2px solid #c16bfa;outline-offset:-2px}.performance-history-scroll .line-chart{display:block}
 /* Enlarge the performance chart and its explanations for easier scanning. */
 .performance .panel-heading h2{font-size:18px}.performance .panel-heading select{font-size:14px;padding:8px 10px;max-width:180px}.performance .chart-meta{font-size:13px}.performance .chart-explanation{font-size:14px;line-height:1.6;padding:0 22px}.performance .line-chart{height:270px;padding:8px 18px 0}.performance .line-chart text{font-size:12px}.performance .chart-takeaway{font-size:16px;line-height:1.6;padding:14px 16px;margin:5px 18px 14px}.performance .chart-footer{font-size:13px;padding:12px 18px}.insights-panel .insight h3{font-size:16px}.insights-panel .insight p{font-size:14px;line-height:1.65}.insights-panel .insight small{font-size:12px}.insights-panel .insight-evidence{font-size:13px}@media(max-width:760px){.performance .line-chart{height:245px}.performance .chart-takeaway{font-size:14px}.insights-panel .insight h3{font-size:15px}.insights-panel .insight p{font-size:13px}}@media(max-width:480px){.performance .panel-heading h2{font-size:16px}.performance .panel-heading select{font-size:12px}.performance .line-chart{height:220px}.performance .chart-meta{font-size:11px}.performance .chart-explanation{font-size:12px;padding:0 13px}.performance .chart-takeaway{font-size:13px;padding:11px 12px;margin:5px 11px 12px}.performance .chart-footer{font-size:11px;padding:10px 12px}}
 
@@ -116,3 +118,28 @@ body{background:radial-gradient(ellipse at 74% -18%,#39105f66,transparent 44%),r
 @media(max-width:560px){.player-comparison-list{padding:4px 12px}.player-comparison-row{grid-template-columns:minmax(84px,1fr) minmax(60px,1fr) 55px;gap:8px;min-height:48px}.player-comparison-row small{grid-column:1/-1;text-align:left;margin-top:-8px;font-size:10px}.player-comparison-value{font-size:12px}}
 .insight-icon{box-shadow:0 0 16px color-mix(in srgb,currentColor 10%,transparent)}
 .demo-pill{background:#291444;border-color:#663d91;color:#d6b5ff}.icon-button:hover,.details-button:hover{border-color:#8758b4;box-shadow:0 0 14px #9d51d51c}
+
+/* Type colors apply to composition bars, labels, and individual type badges. */
+.composition-row.type-normal,.composition-type-badges .type-normal{--accent:#b9b9a1}
+.composition-row.type-fire,.composition-type-badges .type-fire{--accent:#f4a34f}
+.composition-row.type-water,.composition-type-badges .type-water{--accent:#67b7f5}
+.composition-row.type-electric,.composition-type-badges .type-electric{--accent:#f2ce53}
+.composition-row.type-grass,.composition-type-badges .type-grass{--accent:#75d798}
+.composition-row.type-ice,.composition-type-badges .type-ice{--accent:#96e2e2}
+.composition-row.type-fighting,.composition-type-badges .type-fighting{--accent:#ef7771}
+.composition-row.type-poison,.composition-type-badges .type-poison{--accent:#d781d2}
+.composition-row.type-ground,.composition-type-badges .type-ground{--accent:#dfbd76}
+.composition-row.type-flying,.composition-type-badges .type-flying{--accent:#b8a0f4}
+.composition-row.type-psychic,.composition-type-badges .type-psychic{--accent:#fa82a6}
+.composition-row.type-bug,.composition-type-badges .type-bug{--accent:#b9cd58}
+.composition-row.type-rock,.composition-type-badges .type-rock{--accent:#cbb86a}
+.composition-row.type-ghost,.composition-type-badges .type-ghost{--accent:#b27aea}
+.composition-row.type-dragon,.composition-type-badges .type-dragon{--accent:#a58aff}
+.composition-row.type-dark,.composition-type-badges .type-dark{--accent:#b49c8e}
+.composition-row.type-steel,.composition-type-badges .type-steel{--accent:#bec5dc}
+.composition-row.type-fairy,.composition-type-badges .type-fairy{--accent:#ee9acb}
+.composition-row.type-unknown,.composition-type-badges .type-unknown{--accent:#aeb4bf}
+.composition-player-count{min-width:0;text-align:right}.composition-player-count>button{font:inherit;color:inherit;background:none;border:0;border-bottom:1px dotted currentColor;padding:2px;cursor:help}.composition-player-count>button:focus-visible{outline:2px solid var(--accent,#c16bfa);outline-offset:3px}.composition-owner-list{display:flex;flex-direction:column;gap:4px;margin-top:5px;font-size:11px;text-align:left;overflow-wrap:anywhere;white-space:normal}.composition-row>.composition-player-count .composition-owner-list{position:relative;width:180px;margin-left:auto;padding:8px;border:1px solid #493553;border-radius:5px;background:#211a2b}.composition-row{grid-template-columns:80px minmax(30px,1fr) minmax(24px,auto)}
+
+.composition-pokemon .composition-type-badges>span{color:var(--accent,#bc9ee8)}
+.composition-player-count{position:relative}.composition-owner-list,.composition-row>.composition-player-count .composition-owner-list{position:absolute;right:0;top:100%;z-index:5;width:180px;max-width:65vw;padding:8px;border:1px solid #493553;border-radius:5px;background:#211a2b;color:#e4d9ef;box-shadow:0 5px 18px #0007}
